@@ -1,0 +1,93 @@
+library(tidyverse)
+library(caret)
+library(readxl)
+
+dataset <- read_xlsx("House Price India.xlsx")
+View(dataset)
+
+## Prepare and clean data
+
+ggplot(data = dataset, 
+       mapping = aes(Price)) +
+       geom_histogram(bins = 100)
+# right skewed distribution for Price
+
+# check the missing value
+dataset %>%
+  complete.cases() %>%
+  mean()
+# mean = 1 >> There is no missing value
+
+#create new column (log transformation) to normalize price 
+dataset <- dataset %>% 
+  mutate(log_price = log(Price))
+
+ggplot(data = dataset, 
+       mapping = aes(log_price)) +
+  geom_histogram(bins = 100)
+
+# choose the significant variables that affect the Price
+summary(lm(Price ~ ., data = dataset))
+
+# rename (new_name = old_name)
+clean_data <- dataset %>%
+              select ("n_bedrooms" = "number of bedrooms",
+                      "n_floors" = "number of floors",
+                      "con_house" = "condition of the house",
+                      "grade_house" = "grade of the house",
+                      "area_house" = "Area of the house(excluding basement)",
+                      "built_year" = "Built Year",
+                      "price" = "Price",
+                      log_price
+                       ) 
+
+View(clean_data)
+
+## 1. split data
+# 80% train, 20% test
+split_data <- function(df) {
+  set.seed(3)
+  n <- nrow(df)
+  train_id <- sample(1:n, size = 0.8*n)
+  train_data <- df[train_id, ]
+  test_data <- df[-train_id, ]
+  return( list(training = train_data,
+               testing = test_data))
+}
+
+prep_data <- split_data(clean_data)
+train_data <- prep_data[[1]]
+test_data <- prep_data[[2]]
+
+
+## 2. train model
+train_model <- train(log_price ~ . -price,
+                     data = train_data,
+                     method = "lm")
+train_model
+
+## 3. score model
+predict_test <- predict(train_model, newdata = test_data)
+
+predict_train <- predict(train_model, newdata = train_data)
+
+
+## evaluate model
+# take exp to undo log
+squared_error_test <- (exp(test_data$log_price) - exp(predict_test))^2
+rmse_test <- sqrt(mean(squared_error_test))
+rmse_test
+
+squared_error_train <- (exp(train_data$log_price) - exp(predict_train))^2
+rmse_train <- sqrt(mean(squared_error_train))
+rmse_train
+
+#rsme of train = 233346.7
+#rsme of test = 222658
+
+
+(mae_test <- mean(abs(exp(test_data$log_price) - exp(predict_test))))
+(mae_train <- mean(abs(exp(train_data$log_price) - exp(predict_train))))
+
+#mae of train = 141457.9
+#mae of test = 138444
